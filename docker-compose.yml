@@ -1,5 +1,5 @@
 services:
-  # Selenoid - gerenciador de browsers
+  # Selenoid - gerenciador de browsers com VNC
   selenoid:
     image: aerokube/selenoid:latest-release
     container_name: selenoid
@@ -10,21 +10,30 @@ services:
     volumes:
       - "./config:/etc/selenoid:ro"
       - "./videos:/opt/selenoid/video"
-      # Windows Docker Desktop: usa pipe nomeado ou socket do WSL2
-      - "//var/run/docker.sock:/var/run/docker.sock"
+      - "./logs:/opt/selenoid/logs"
+      # Docker socket para criar containers de browser
+      - "/var/run/docker.sock:/var/run/docker.sock"
     environment:
       - OVERRIDE_VIDEO_OUTPUT_DIR=/opt/selenoid/video
-      - DOCKER_HOST=unix:///var/run/docker.sock
+      - TZ=America/Sao_Paulo
     command: [
       "-conf", "/etc/selenoid/browsers.json",
       "-video-output-dir", "/opt/selenoid/video",
       "-log-output-dir", "/opt/selenoid/logs",
       "-container-network", "automacao-docker_selenium",
       "-limit", "10",
-      "-timeout", "2m"
+      "-timeout", "5m",
+      "-session-attempt-timeout", "2m",
+      "-service-startup-timeout", "2m"
     ]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:4444/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
 
-  # Selenoid UI - interface para ver gravações e status
+  # Selenoid UI - interface com visualizacao VNC em tempo real
   selenoid-ui:
     image: aerokube/selenoid-ui:latest-release
     container_name: selenoid-ui
@@ -32,34 +41,18 @@ services:
       - selenium
     ports:
       - "8080:8080"
-    command: ["--selenoid-uri", "http://selenoid:4444"]
-    depends_on:
-      - selenoid
-
-  # Chrome workers com noVNC (tempo real)
-  # Para escalar dinamicamente: docker compose up -d --scale chrome-worker=N
-  # Exemplo: docker compose up -d --scale chrome-worker=3
-  # Para reduzir: docker compose up -d --scale chrome-worker=1
-  chrome-worker:
-    image: selenium/standalone-chrome:latest
-    networks:
-      - selenium
-    shm_size: 2gb
     environment:
-      - SE_NODE_MAX_SESSIONS=1
-      - SE_NODE_SESSION_TIMEOUT=300
-      - SE_VNC_NO_PASSWORD=1
-      - SE_SCREEN_WIDTH=1920
-      - SE_SCREEN_HEIGHT=1080
-    volumes:
-      - /dev/shm:/dev/shm
-    # Expor portas para acesso direto (opcional, para debug)
-    # ports:
-    #   - "7900:7900"  # VNC
-    #   - "4444:4444"  # Selenium (se não usar Selenoid)
+      - TZ=America/Sao_Paulo
+    command: [
+      "--selenoid-uri", "http://selenoid:4444",
+      "--listen", ":8080"
+    ]
+    depends_on:
+      selenoid:
+        condition: service_healthy
+    restart: unless-stopped
 
-
-  # Dashboard - painel único para TV
+  # Dashboard - painel de monitoramento com grid VNC
   dashboard:
     image: nginx:alpine
     container_name: dashboard
@@ -73,9 +66,14 @@ services:
     depends_on:
       - selenoid-ui
       - selenoid
-      - chrome-worker
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
-  # Limpeza automática de vídeos antigos (últimas 24h)
+  # Limpeza automatica de videos antigos (ultimas 24h)
   video-cleaner:
     image: alpine:latest
     container_name: video-cleaner
@@ -83,13 +81,13 @@ services:
       - "./videos:/videos"
     command: >
       sh -c "while true; do
-        find /videos -type f -name '*.mp4' -mtime +1 -delete;
-        echo 'Limpeza de vídeos concluída';
+        echo '[Video Cleaner] Iniciando limpeza...';
+        find /videos -type f -name '*.mp4' -mtime +1 -delete 2>/dev/null;
+        find /videos -type f -name '*.log' -mtime +1 -delete 2>/dev/null;
+        echo '[Video Cleaner] Limpeza concluida em '$(date);
         sleep 3600;
       done"
     restart: unless-stopped
-
-  
 
 networks:
   selenium:
