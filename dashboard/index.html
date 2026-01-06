@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoramento de Automações</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #0a0e27;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        .header h1 {
+            font-size: 28px;
+            font-weight: 600;
+        }
+
+        .clock {
+            font-size: 24px;
+            font-weight: 300;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: 1fr 1fr;
+            gap: 15px;
+            padding: 15px;
+            height: calc(100vh - 80px);
+        }
+
+        .panel {
+            background: #1a1f3a;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.4);
+            border: 2px solid #2d3561;
+            position: relative;
+        }
+
+        .panel-header {
+            background: #2d3561;
+            padding: 12px 20px;
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #4ade80;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .panel-content {
+            height: calc(100% - 48px);
+            position: relative;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .large-panel {
+            grid-column: 1 / 2;
+            grid-row: 1 / 3;
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+
+        .spinner {
+            border: 4px solid #2d3561;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Tabs para alternar entre workers */
+        .tabs {
+            display: flex;
+            background: #1a1f3a;
+            border-bottom: 2px solid #2d3561;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 10px;
+            text-align: center;
+            cursor: pointer;
+            background: #1a1f3a;
+            border: none;
+            color: #8b92b8;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        .tab:hover {
+            background: #2d3561;
+            color: #fff;
+        }
+
+        .tab.active {
+            background: #2d3561;
+            color: #fff;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .tab-content {
+            display: none;
+            height: calc(100% - 48px);
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Responsivo para telas menores */
+        @media (max-width: 1600px) {
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto;
+            }
+            .large-panel {
+                grid-column: 1;
+                grid-row: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 Monitoramento de Automações</h1>
+        <div class="clock" id="clock"></div>
+    </div>
+
+    <div class="container">
+        <!-- Painel principal: Selenoid UI (gravações e status) -->
+        <div class="panel large-panel">
+            <div class="panel-header">
+                <span>📊 Selenoid UI - Gravações e Status</span>
+                <div class="status-indicator"></div>
+            </div>
+            <div class="panel-content">
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p>Carregando Selenoid UI...</p>
+                </div>
+                <iframe src="http://localhost:8080" onload="this.previousElementSibling.style.display='none'"></iframe>
+            </div>
+        </div>
+
+        <!-- Painel de workers em tempo real (noVNC via Selenoid UI) -->
+        <div class="panel">
+            <div class="panel-header">
+                <span>🖥️ Sessões VNC em Tempo Real</span>
+                <div class="status-indicator" id="vnc-status"></div>
+            </div>
+            <div class="panel-content" style="padding: 10px;">
+                <div id="sessions-container" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 10px; height: 100%; overflow-y: auto;">
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 20px; color: #8b92b8;">
+                        <div class="spinner" style="margin: 0 auto 15px;"></div>
+                        <p>Aguardando sessões ativas...</p>
+                        <p style="font-size: 12px; margin-top: 10px;">Execute automações com VNC habilitado para ver as telas aqui</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Painel de métricas/info adicional (você pode customizar) -->
+        <div class="panel">
+            <div class="panel-header">
+                <span>📈 Informações do Sistema</span>
+                <div class="status-indicator"></div>
+            </div>
+            <div class="panel-content" style="padding: 20px; overflow-y: auto;">
+                <h3 style="margin-bottom: 15px; color: #667eea;">Status dos Workers</h3>
+                <div id="workers-status">
+                    <div style="margin-bottom: 10px; padding: 10px; background: #0a0e27; border-radius: 6px;">
+                        <strong>Worker 1:</strong> <span style="color: #4ade80;">● Online</span> - http://localhost:7901
+                    </div>
+                    <div style="margin-bottom: 10px; padding: 10px; background: #0a0e27; border-radius: 6px;">
+                        <strong>Worker 2:</strong> <span style="color: #4ade80;">● Online</span> - http://localhost:7902
+                    </div>
+                    <div style="margin-bottom: 10px; padding: 10px; background: #0a0e27; border-radius: 6px;">
+                        <strong>Worker 3:</strong> <span style="color: #4ade80;">● Online</span> - http://localhost:7903
+                    </div>
+                    <div style="margin-bottom: 10px; padding: 10px; background: #0a0e27; border-radius: 6px;">
+                        <strong>Worker 4:</strong> <span style="color: #4ade80;">● Online</span> - http://localhost:7904
+                    </div>
+                </div>
+
+                <h3 style="margin: 25px 0 15px; color: #667eea;">Informações</h3>
+                <ul style="list-style: none; line-height: 2;">
+                    <li>🎥 Gravações: últimas 24h</li>
+                    <li>🖥️ Resolução: 1920x1080</li>
+                    <li>🌐 Selenoid: http://localhost:4444</li>
+                    <li>📊 Selenoid UI: http://localhost:8080</li>
+                    <li>📺 Dashboard: http://localhost:8888</li>
+                </ul>
+
+                <h3 style="margin: 25px 0 15px; color: #667eea;">Atalhos</h3>
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <a href="http://localhost:8080" target="_blank" 
+                       style="padding: 10px; background: #667eea; color: white; text-decoration: none; border-radius: 6px; text-align: center;">
+                        Abrir Selenoid UI
+                    </a>
+                    <a href="http://localhost:7901" target="_blank" 
+                       style="padding: 10px; background: #764ba2; color: white; text-decoration: none; border-radius: 6px; text-align: center;">
+                        Worker 1 (tela cheia)
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Relógio
+        function updateClock() {
+            const now = new Date();
+            const options = { 
+                weekday: 'short', 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            };
+            document.getElementById('clock').textContent = now.toLocaleDateString('pt-BR', options);
+        }
+        updateClock();
+        setInterval(updateClock, 1000);
+
+        // Alternar entre tabs de workers
+        function switchTab(index) {
+            const tabs = document.querySelectorAll('.tab');
+            const contents = document.querySelectorAll('.tab-content');
+            
+            tabs.forEach((tab, i) => {
+                if (i === index) {
+                    tab.classList.add('active');
+                    contents[i].classList.add('active');
+                } else {
+                    tab.classList.remove('active');
+                    contents[i].classList.remove('active');
+                }
+            });
+        }
+
+        // Buscar sessões ativas do Selenoid e exibir miniaturas VNC
+        async function fetchSelenoidSessions() {
+            const container = document.getElementById('sessions-container');
+            const statusIndicator = document.getElementById('vnc-status');
+            
+            if (!container || !statusIndicator) {
+                console.error('[VNC] Elementos do DOM não encontrados!');
+                return;
+            }
+            
+            try {
+                // Verificar status do Selenoid usando o proxy (caminho interno do Docker: selenoid:4444)
+                const statusUrl = window.location.origin + '/selenoid-status';
+                console.log('[VNC] Verificando status em:', statusUrl);
+                console.log('[VNC] Origin:', window.location.origin);
+                
+                let statusResponse;
+                try {
+                    statusResponse = await fetch(statusUrl, {
+                        method: 'GET',
+                        headers: { 
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        },
+                        cache: 'no-cache',
+                        mode: 'cors'
+                    });
+                } catch (fetchError) {
+                    console.error('[VNC] Erro no fetch:', fetchError);
+                    throw new Error(`Erro de rede: ${fetchError.message}`);
+                }
+                
+                console.log('[VNC] Response status:', statusResponse.status);
+                console.log('[VNC] Response ok:', statusResponse.ok);
+                
+                if (!statusResponse.ok) {
+                    const errorText = await statusResponse.text();
+                    console.error('[VNC] Resposta não OK:', errorText);
+                    throw new Error(`Status HTTP ${statusResponse.status}: ${errorText}`);
+                }
+                
+                const statusData = await statusResponse.json();
+                console.log('[VNC] Status recebido:', statusData);
+                console.log('[VNC] Sessões usadas:', statusData.used);
+                
+                const activeSessions = statusData.used || 0;
+                
+                if (activeSessions > 0) {
+                    statusIndicator.style.background = '#4ade80';
+                    console.log('[VNC]', activeSessions, 'sessão(ões) ativa(s)');
+                    
+                    // Mostrar iframe do Selenoid UI que já exibe as sessões ativas
+                    container.innerHTML = `
+                        <div style="grid-column: 1 / -1; height: 100%; position: relative;">
+                            <iframe 
+                                src="http://localhost:8080" 
+                                style="width: 100%; height: 100%; border: none; border-radius: 4px;"
+                                onload="this.nextElementSibling?.remove()"
+                            ></iframe>
+                            <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center;">
+                                <div class="spinner" style="margin: 0 auto 15px;"></div>
+                                <p style="color: #8b92b8;">Carregando Selenoid UI...</p>
+                            </div>
+                        </div>
+                        <div style="grid-column: 1 / -1; padding: 10px; background: #0a0e27; border-radius: 4px; margin-top: 10px; text-align: center; font-size: 12px; color: #8b92b8;">
+                            <strong style="color: #4ade80;">${activeSessions}</strong> sessão(ões) ativa(s) | 
+                            <a href="http://localhost:8080" target="_blank" style="color: #667eea; text-decoration: none;">
+                                Abrir Selenoid UI em nova aba
+                            </a>
+                        </div>
+                    `;
+                } else {
+                    // Sem sessões ativas - mostrar mensagem
+                    statusIndicator.style.background = '#8b92b8';
+                    container.innerHTML = `
+                        <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #8b92b8;">
+                            <div class="spinner" style="margin: 0 auto 15px;"></div>
+                            <p>Aguardando sessões ativas...</p>
+                            <p style="font-size: 12px; margin-top: 10px;">
+                                Execute automações com VNC habilitado para ver as telas aqui
+                            </p>
+                            <p style="font-size: 11px; margin-top: 15px; color: #667eea;">
+                                Certifique-se de que o script Python está usando:<br>
+                                <code style="background: #1a1f3a; padding: 4px 8px; border-radius: 4px;">
+                                    chrome_options.set_capability('selenoid:options', {'enableVNC': True})
+                                </code>
+                            </p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('[VNC] Erro ao buscar sessões:', error);
+                console.error('[VNC] Stack trace:', error.stack);
+                statusIndicator.style.background = '#ef4444';
+                container.innerHTML = `
+                    <div style="grid-column: 1 / -1; text-align: center; padding: 20px; color: #ef4444;">
+                        <p>❌ Erro ao conectar com Selenoid</p>
+                        <p style="font-size: 11px; margin-top: 10px; color: #8b92b8;">
+                            <strong>Erro:</strong> ${error.message}
+                        </p>
+                        <p style="font-size: 11px; margin-top: 10px; color: #8b92b8;">
+                            Verifique o console do navegador (F12) para mais detalhes.
+                        </p>
+                        <p style="font-size: 10px; margin-top: 10px; color: #667eea;">
+                            URL tentada: ${window.location.origin}/selenoid-status
+                        </p>
+                        <p style="font-size: 10px; margin-top: 5px; color: #667eea;">
+                            <a href="${window.location.origin}/selenoid-status" target="_blank" style="color: #667eea;">
+                                Testar proxy diretamente
+                            </a>
+                        </p>
+                    </div>
+                `;
+            }
+        }
+        
+        // Atualizar sessões a cada 3 segundos
+        fetchSelenoidSessions();
+        setInterval(fetchSelenoidSessions, 3000);
+    </script>
+</body>
+</html>
