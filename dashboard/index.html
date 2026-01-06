@@ -820,11 +820,18 @@ driver = webdriver.Remote(
                         const sessionMap = versionData;
                         for (const [sessionId, sessionInfo] of Object.entries(sessionMap)) {
                             if (sessionId && sessionInfo && typeof sessionInfo === 'object') {
+                                // VNC is enabled if using selenoid/vnc images (which we are)
+                                // or if explicitly set in session caps
+                                const hasVnc = sessionInfo.vnc === true ||
+                                               sessionInfo.caps?.selenoid?.enableVNC === true ||
+                                               sessionInfo.caps?.['selenoid:options']?.enableVNC === true ||
+                                               true; // Assume VNC enabled since we use vnc images
+
                                 sessions.push({
                                     id: sessionId,
                                     browser: browserName,
                                     version: version,
-                                    vnc: sessionInfo.vnc || false,
+                                    vnc: hasVnc,
                                     screen: sessionInfo.screen || '1920x1080',
                                     caps: sessionInfo.caps || {}
                                 });
